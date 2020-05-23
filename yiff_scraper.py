@@ -18,11 +18,11 @@ parser = argparse.ArgumentParser(description="scrape files from yiff.party posts
 groupsParser = parser.add_mutually_exclusive_group()
 groupsParser.add_argument("--links", type=str, nargs="+", const=None, help="take links from STDI")
 groupsParser.add_argument("--read", metavar="file.txt", type=argparse.FileType("r", encoding="UTF-8"), const=None, help="read links from file")
-parser.add_argument("--dest" ,type=str, nargs="?", default=os.getcwd(), help="specify download directory")
+parser.add_argument("--dest", type=str, nargs="?", default=os.getcwd(), help="specify download directory")
 parser.add_argument("--timeout", type=int, nargs="?", default=60, help="timeout in seconds for requests")
 parser.add_argument("--delay", type=int, nargs="?", default=5, help="seconds to wait between downloads")
 parser.add_argument("--continous", action="store_true", default=False, help="paginate automatically and scrap next pages")
-parser.add_argument("--version", action="version", version="yiff scraper 1.0")
+parser.add_argument("--version", action="version", version="yiff_scraper 1.0")
 args = parser.parse_args()
 
 SKIP = "https_www.dropbox.com_static_images_spectrum-icons_generated_content_content-folder_dropbox-large.png"
