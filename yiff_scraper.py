@@ -158,10 +158,7 @@ with requests.Session() as session:
                         file.write(iterData) 
                 
                 FILE_COUNTER += 1
-                if FILE_COUNTER % 4 == 0 :
-                    sleep(int(SLEEP) + 5)
-                else:
-                    sleep(SLEEP)
+            sleep(SLEEP)
                     
 print(ERASE, end="\r", flush=True)
 print(f"[+] {FILE_COUNTER} files downloaded")
