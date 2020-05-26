@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 from urllib3.exceptions import ReadTimeoutError
 from requests.packages.urllib3.util.retry import Retry
 
-def failedLinks(link, failedDirectory):
+def failedLinks(link, failedLogPath):
 
-    with open(failedDirectory, "a") as failed:
+    with open(failedLogPath, "a") as failed:
         failed.write(suppliedLink+"\n")
 
 parser = argparse.ArgumentParser(description="scrape files from yiff.party posts")
@@ -66,17 +66,14 @@ with requests.Session() as session:
             pageResp.raise_for_status()
 
         except requests.exceptions.ConnectionError as connErr:
-            failedLinks(suppliedLink, failedDirectory)
             print(connErr)
             continue
     
         except (socket.timeout, ReadTimeoutError, requests.Timeout) as timeoutErr:
-            failedLinks(suppliedLink, failedDirectory)
             print(timeoutErr)
             continue
 
         except requests.exceptions.HTTPError as err:
-            failedLinks(suppliedLink, failedDirectory)
             print(err)
             continue
         
@@ -88,7 +85,7 @@ with requests.Session() as session:
         patreonName = pageTree.xpath("//span[@class='yp-info-name']/small/text()")[0].strip()
         creatorName = creatorName+patreonName
         creatorDirectory = os.path.join(DESTINATION, creatorName)
-        failedDirectory = os.path.join(creatorDirectory, "failed_links.txt")
+        failedLogPath = os.path.join(creatorDirectory, "failed_links.txt")
         os.makedirs(creatorDirectory, exist_ok=True)
         if CONTINUE:
             nextPage = pageTree.xpath("//a[@class='btn pag-btn pag-btn-bottom'][1]/@href")
@@ -124,7 +121,7 @@ with requests.Session() as session:
                     else:
                         diff = int(fileSize) - int(localFileSize)
                         if not diff == int(fileSize):
-                            HEADERS["Range"] = f"bytes={diff}-{fileSize}"
+                            HEADERS["Range"] = f"bytes={diff+1}-{fileSize-1}"
 
                         fileResp = session.get(media, headers=HEADERS, stream=True, timeout=TIMEOUT)
                         fileResp.raise_for_status()
@@ -133,22 +130,25 @@ with requests.Session() as session:
                     fileResp.raise_for_status()
 
             except requests.exceptions.ConnectionError as connErr:
-                failedLinks(media, failedDirectory)
+                failedLinks(media, failedLogPath)
                 print(connErr)
+                FILE_COUNTER += 1
                 continue
         
             except (socket.timeout, ReadTimeoutError, requests.Timeout) as timeErr:
-                failedLinks(media, failedDirectory)
+                failedLinks(media, failedLogPath)
                 print(timeErr)
+                FILE_COUNTER += 1
                 continue
         
             except requests.exceptions.HTTPError as err:
-                failedLinks(media, failedDirectory)
+                failedLinks(media, failedLogPath)
                 print(err)
+                FILE_COUNTER += 1
                 continue
         
             
-            with open(filepath, "wb") as file:
+            with open(filepath, "ab") as file:
 
                 print(ERASE, end="\r", flush=True)
                 print(f"[+] Downloading file: {filename}, have downloaded {FILE_COUNTER} files", end="\r", flush=True)
