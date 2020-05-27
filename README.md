@@ -59,4 +59,4 @@ optional arguments:
 
 * Given the current situation, this scraper does not perform async requests, intentionally. `aiohttp` support shall be added in the future.
 
-* Only Downloads files hosted at `data.yiff.party`. Does not download embeded videos, etc.
+* Only Downloads files hosted at `data.yiff.party`. Does not download embeded videos, etc., but URLs are written to a file named **embeded_links.txt**
