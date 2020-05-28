@@ -227,9 +227,9 @@ with requests.Session() as session:
                     FILENAME_COUNTER, FILE_COUNTER = downloadFile(media, creatorDirectory, FILENAME_COUNTER, FILE_COUNTER, SLEEP)
                     
         if SHARED_ONLY:
+            
             for sharedFile in sharedFiles:
-                
-                if SHARED_FILE_COUNTER < len(sharedFiles):
+                if SHARED_FILENAME_COUNTER < len(sharedFiles):
                     SHARED_FILENAME_COUNTER, SHARED_FILE_COUNTER = downloadFile(sharedFile, sharedFilesDirectory, SHARED_FILENAME_COUNTER, SHARED_FILE_COUNTER, SLEEP)
 
 print(ERASE, end="\r", flush=True)
