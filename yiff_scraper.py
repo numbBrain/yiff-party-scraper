@@ -1,6 +1,7 @@
 import os
-import requests
+import math
 import socket
+import requests
 import argparse
 from lxml import html
 from time import sleep
@@ -19,14 +20,92 @@ def writeFiles(content, failedLogPath):
         elif isinstance(content, str):
             logFile.write(content+"\n")
 
+def formatBytes(bytes):
+
+    if bytes == 0:
+        return "0B"
+    suffixes = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB']
+    index = int(math.floor(math.log(bytes, 1024)))
+    formatted = round(float(bytes)/(1024**index), 2)
+    return f"{formatted} {suffixes[index]}"
+
+def downloadFile(fileLink, directory, filenameCounter, fileCounter, delay):
+
+    global TOTAL_SIZE
+    filename = f"{filenameCounter}_{fileLink.strip('/').split('/')[-1]}"
+    filepath = os.path.join(directory, filename)
+
+    try:
+        fileData = session.get(fileLink, headers=HEADERS, stream=True,timeout=TIMEOUT)
+        
+        try:
+            fileSize = int(fileData.headers["Content-Length"])
+        except KeyError:
+            fileSize = 0
+        if os.path.isfile(filepath):
+
+            localFileSize = os.stat(filepath).st_size
+            
+            if localFileSize == fileSize:
+                filenameCounter += 1
+                sleep(2)
+                return (filenameCounter, fileCounter)
+            else:
+                if fileSize == 0:
+                    pass
+                else:
+                    diff = int(fileSize) - int(localFileSize)
+                    HEADERS["Range"] = f"bytes={diff+1}-{fileSize-1}"
+
+                fileResp = session.get(fileLink, headers=HEADERS, stream=True, timeout=TIMEOUT)
+                fileResp.raise_for_status()
+        else:
+            fileResp = fileData
+
+    except requests.exceptions.ConnectionError as connErr:
+        writeFiles(fileLink, failedLogPath)
+        filenameCounter += 1
+        print(connErr)
+        return (filenameCounter, fileCounter)
+
+    except (socket.timeout, ReadTimeoutError, requests.Timeout) as timeErr:
+        writeFiles(fileLink, failedLogPath)
+        filenameCounter += 1
+        print(timeErr)
+        return (filenameCounter, fileCounter)
+
+
+    except requests.exceptions.HTTPError as err:
+        writeFiles(fileLink, failedLogPath)
+        filenameCounter += 1
+        print(err)
+        return (filenameCounter, fileCounter)
+
+    with open(filepath, "ab") as file:
+
+        print(ERASE, end="\r", flush=True)
+        print(f"[+] Downloading file: {filename}, have downloaded {fileCounter} files, {formatBytes(TOTAL_SIZE)}", end="\r", flush=True)
+
+        for iterData in fileResp.iter_content(chunk_size=2**20): 
+            if iterData:
+                file.write(iterData) 
+    fileCounter += 1
+    filenameCounter += 1
+    TOTAL_SIZE += os.stat(filepath).st_size
+    sleep(delay)
+    return (filenameCounter, fileCounter)
+        
 parser = argparse.ArgumentParser(description="scrape files from yiff.party posts")
 groupsParser = parser.add_mutually_exclusive_group()
+modeParser = parser.add_mutually_exclusive_group()
 groupsParser.add_argument("--links", type=str, nargs="+", const=None, help="take links from STDI")
 groupsParser.add_argument("--read", metavar="file.txt", type=argparse.FileType("r", encoding="UTF-8"), const=None, help="read links from file")
 parser.add_argument("--dest", type=str, nargs="?", default=os.getcwd(), help="specify download directory")
 parser.add_argument("--timeout", type=int, nargs="?", default=60, help="timeout in seconds for requests")
 parser.add_argument("--delay", type=int, nargs="?", default=5, help="seconds to wait between downloads")
 parser.add_argument("--continous", action="store_true", default=False, help="paginate automatically and scrap next pages")
+modeParser.add_argument("--postsOnly", action="store_true", default=False, help="scrape patreon posts only")
+modeParser.add_argument("--sharedOnly", action="store_true", default=False, help="scrape shared files posts only")
 parser.add_argument("--version", action="version", version="yiff_scraper 1.0")
 args = parser.parse_args()
 
@@ -39,8 +118,13 @@ TIMEOUT = args.timeout
 SLEEP = args.delay
 CONTINUE = args.continous
 DESTINATION = os.path.abspath(args.dest)
+POSTS_ONLY = args.postsOnly
+SHARED_ONLY = args.sharedOnly
 FILE_COUNTER = 0
+SHARED_FILE_COUNTER = 0
 FILENAME_COUNTER = 1
+SHARED_FILENAME_COUNTER = 1
+TOTAL_SIZE = 0
 
 if not (args.read or args.links):
     print("[-] No options specified, use --help for available options")
@@ -48,12 +132,25 @@ if not (args.read or args.links):
 
 else:
     if args.links:
+
         suppliedLinks = list(dict.fromkeys(args.links)) 
     else:
         suppliedLinks = list(dict.fromkeys(list(args.read.read().splitlines())))
         args.read.close()
 
 print(f"[+] Download folder: {DESTINATION}\n")
+
+if not (POSTS_ONLY or SHARED_ONLY):
+    print(f"[+] Both posts and shared files will be downloaded\n")
+    POSTS_ONLY = True
+    SHARED_ONLY = True
+
+elif POSTS_ONLY:
+    print(f"[+] Only patreon posts will be downloaded\n")
+
+
+elif SHARED_ONLY:
+    print(f"[+] Only shared files will be downloaded\n")
 
 with requests.Session() as session:
     session.mount("https://", HTTPAdapter(max_retries=RETRIES)) 
@@ -89,14 +186,16 @@ with requests.Session() as session:
         pageTree = html.fromstring(pageResp.text)
         pageTree.make_links_absolute(suppliedLink)
         posts = pageTree.xpath("//div[@class='card large yp-post']")
-
-        creatorName = pageTree.xpath("//span[@class='yp-info-name']/text()")[0].strip()
+        sharedFiles = pageTree.xpath("//div[@id='shared_files']//div[@class='card-action']/a/@href")
+        name = pageTree.xpath("//span[@class='yp-info-name']/text()")[0].strip()
         patreonName = pageTree.xpath("//span[@class='yp-info-name']/small/text()")[0].strip()
-        creatorName = creatorName+patreonName
+
+        creatorName = name+patreonName
         creatorDirectory = os.path.join(DESTINATION, creatorName)
+        sharedFilesDirectory = os.path.join(creatorDirectory, "shared_files")
         failedLogPath = os.path.join(creatorDirectory, "failed_links.txt")
         embededLogPath = os.path.join(creatorDirectory, "embeded_links.txt")
-        os.makedirs(creatorDirectory, exist_ok=True)
+        os.makedirs(sharedFilesDirectory, exist_ok=True)
 
         if CONTINUE:
             nextPage = pageTree.xpath("//a[@class='btn pag-btn pag-btn-bottom'][1]/@href")
@@ -104,87 +203,36 @@ with requests.Session() as session:
                 nextPage = nextPage[0]
                 index = suppliedLinks.index(suppliedLink) + 1
                 suppliedLinks.insert(index, nextPage)  
-                       
-        for post in posts:
 
-            cardAttachments = post.xpath(".//div[@class='card-attachments']//a/@href")
-            cardAction = post.xpath(".//div[@class='card-action']//a/@href") 
-            cardEmbed = post.xpath(".//div[@class='card-embed']//a/@href") 
+        if POSTS_ONLY:   
+            for post in posts:
 
-            if cardAttachments:
-                allMedia = cardAttachments
-            else:
-                allMedia = cardAction
-            
-            if cardEmbed:
-                writeFiles(cardEmbed, embededLogPath)
+                cardAttachments = post.xpath(".//div[@class='card-attachments']//a/@href")
+                cardAction = post.xpath(".//div[@class='card-action']//a/@href") 
+                cardEmbed = post.xpath(".//div[@class='card-embed']//a/@href") 
 
-            for media in allMedia:
-        
-                if SKIP in media:
-                    continue
+                if cardAttachments:
+                    allMedia = cardAttachments
+                else:
+                    allMedia = cardAction
                 
-                filename = f"{FILENAME_COUNTER}_{media.strip('/').split('/')[-1]}"
-                filepath = os.path.join(creatorDirectory, filename)
+                if cardEmbed:
+                    writeFiles(cardEmbed, embededLogPath)
 
-                try:
-                    fileData = session.get(media, headers=HEADERS, stream=True,timeout=TIMEOUT)
-                    
-                    try:
-                        fileSize = int(fileData.headers["Content-Length"])
-                    except KeyError:
-                        fileSize = 0
-                    if os.path.isfile(filepath):
-
-                        localFileSize = os.stat(filepath).st_size
-                        
-                        if localFileSize == fileSize:
-                            FILENAME_COUNTER += 1
-                            FILE_COUNTER += 1
-                            continue
-                        else:
-                            if fileSize == 0:
-                                HEADERS["Range"] = f"bytes={0}-"
-                            else:
-                                diff = int(fileSize) - int(localFileSize)
-                                HEADERS["Range"] = f"bytes={diff+1}-{fileSize-1}"
-
-                            fileResp = session.get(media, headers=HEADERS, stream=True, timeout=TIMEOUT)
-                            fileResp.raise_for_status()
-                    else:
-                        fileResp = fileData
-                        fileResp.raise_for_status()
-
-                except requests.exceptions.ConnectionError as connErr:
-                    writeFiles(media, failedLogPath)
-                    print(connErr)
-                    FILENAME_COUNTER += 1
-                    continue
+                for media in allMedia:
             
-                except (socket.timeout, ReadTimeoutError, requests.Timeout) as timeErr:
-                    writeFiles(media, failedLogPath)
-                    print(timeErr)
-                    FILENAME_COUNTER += 1
-                    continue
-            
-                except requests.exceptions.HTTPError as err:
-                    writeFiles(media, failedLogPath)
-                    print(err)
-                    FILENAME_COUNTER += 1
-                    continue
-            
-                with open(filepath, "ab") as file:
+                    if SKIP in media:
+                        continue
 
-                    print(ERASE, end="\r", flush=True)
-                    print(f"[+] Downloading file: {filename}, have downloaded {FILE_COUNTER} files", end="\r", flush=True)
+                    FILENAME_COUNTER, FILE_COUNTER = downloadFile(media, creatorDirectory, FILENAME_COUNTER, FILE_COUNTER, SLEEP)
+                    
+        if SHARED_ONLY:
+            for sharedFile in sharedFiles:
+                
+                if SHARED_FILE_COUNTER < len(sharedFiles):
+                    SHARED_FILENAME_COUNTER, SHARED_FILE_COUNTER = downloadFile(sharedFile, sharedFilesDirectory, SHARED_FILENAME_COUNTER, SHARED_FILE_COUNTER, SLEEP)
 
-                    for iterData in fileResp.iter_content(chunk_size=2**20): 
-                        if iterData:
-                            file.write(iterData) 
-                    
-                    FILE_COUNTER += 1
-                    FILENAME_COUNTER += 1
-                sleep(SLEEP)
-                    
 print(ERASE, end="\r", flush=True)
-print(f"[+] {FILE_COUNTER} files downloaded")
+formattedSize = formatBytes(TOTAL_SIZE)
+print(f"[+] {FILE_COUNTER} post files downloaded, {formattedSize}")
+print(f"[+] {SHARED_FILE_COUNTER} shared files downloaded, {formattedSize}")
