@@ -21,6 +21,8 @@ optional arguments:
   --timeout [TIMEOUT]   timeout in seconds for requests
   --delay [DELAY]       seconds to wait between downloads
   --continous           paginate automatically and scrap next pages
+  --postsOnly           scrape patreon posts only
+  --sharedOnly          scrape shared files posts only
   --version             show program's version number and exit
 
   ```
@@ -44,6 +46,14 @@ optional arguments:
   this command takes links from the terminal. Files are downloaded into the **Documents** folder of the current user **(in Linux)**. Timeout for requests is set as 120 seconds and wait time between requests is set as 10 seconds. **--continous option does pagination automatically, it enables you to scrape next pages until the last page is reached.**
 
   **--continous option is ideal for scraping creator's complete profile**
+
+```
+  $ python yiff_scraper.py --links link1 link2 --dest ~/Documents --timeout 120 --delay 10 --sharedOnly
+```
+
+  this command takes links from the terminal. Files are downloaded into the **Documents** folder of the current user **(in Linux)**. Timeout for requests is set as 120 seconds and wait time between requests is set as 10 seconds. **--continous option is not required if you're only scraping shared files.**
+
+  **--sharedOnly and --postsOnly options cannot be used together, if you want to scrape everything don't use either options.**
 
 ### Note
 
