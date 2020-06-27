@@ -111,7 +111,7 @@ args = parser.parse_args()
 
 SKIP = "https_www.dropbox.com_static_images_spectrum-icons_generated_content_content-folder_dropbox-large.png"
 HEADERS = { "User-Agent" : "Opera/9.80 (Linux armv7l) Presto/2.12.407 Version/12.51 , D50u-D1-UHD/V1.5.16-UHD (Vizio, D50u-D1, Wireless)"}
-RETRIES = Retry(total=10, backoff_factor=3)
+RETRIES = Retry(total=10, backoff_factor=3, status_forcelist=[500, 502, 503, 504])
 ERASE = "\033[2K"
 DOMAIN = "yiff.party"
 TIMEOUT = args.timeout
